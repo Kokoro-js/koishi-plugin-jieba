@@ -1,7 +1,7 @@
 {
   "name": "koishi-plugin-jieba",
   "description": "Provide jieba environment with Koishi",
-  "version": "0.0.1",
+  "version": "0.1.0",
   "main": "lib/index.js",
   "typings": "lib/index.d.ts",
   "files": [
@@ -11,7 +11,7 @@
   "license": "MIT",
   "scripts": {},
   "keywords": [
-    "chatbot",
+    "jieba",
     "koishi",
     "plugin"
   ],
