@@ -38,12 +38,11 @@ export class Jieba extends Service implements JiebaApi {
     try {
       nativeBinding = await getNativeBinding(nodeDir)
     } catch (e) {
-      logger.error(e)
       if (e instanceof UnsupportedError) {
-        console.error('Jieba 目前不支持你的系统')
+        logger.error('Jieba 目前不支持你的系统')
       }
       if (e instanceof DownloadError) {
-        console.error('下载二进制文件遇到错误，请查看日志获取更详细信息')
+        logger.error('下载二进制文件遇到错误，请查看日志获取更详细信息')
       }
       throw e
     }
@@ -52,7 +51,14 @@ export class Jieba extends Service implements JiebaApi {
       cutAll: this.cutAll, cutForSearch: this.cutForSearch, tag: this.tag,
       extract: this.extract, loadTFIDFDict: this.loadTFIDFDict
     } = nativeBinding);
-    nativeBinding.load()
+    try {
+      nativeBinding.load()
+    } catch (e) {
+      if (e.message != 'Jieba was loaded, could not load again') {
+        throw e
+      }
+    }
+    logger.success('Jieba 服务启动成功')
   }
 }
 
