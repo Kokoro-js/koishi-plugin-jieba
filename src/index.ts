@@ -1,4 +1,4 @@
-import { Context, Schema, Service } from 'koishi'
+import {Context, Logger, Schema, Service} from 'koishi'
 import path from 'path'
 import { mkdir } from 'fs/promises'
 import fs from "fs";
@@ -8,6 +8,8 @@ import Downloader from "nodejs-file-downloader"
 import type {JiebaApi, Keyword, TaggedWord} from './type';
 
 export const name = 'jieba'
+
+const logger = new Logger("jieba");
 
 declare module 'koishi' {
   interface Context {
@@ -36,8 +38,14 @@ export class Jieba extends Service implements JiebaApi {
     try {
       nativeBinding = await getNativeBinding(nodeDir)
     } catch (e) {
-      console.error(e)
-      return
+      logger.error(e)
+      if (e instanceof UnsupportedError) {
+        console.error('Jieba 目前不支持你的系统')
+      }
+      if (e instanceof DownloadError) {
+        console.error('下载二进制文件遇到错误，请查看日志获取更详细信息')
+      }
+      throw e
     }
     ({
       loadDict: this.loadDict, cut: this.cut,
@@ -74,7 +82,7 @@ async function getNativeBinding(nodeDir) {
         case 'arm64': nodeName = 'jieba.android-arm64'; break
         case 'arm': nodeName = 'jieba.android-arm-eabi'; break
         default:
-          throw new Error(`Unsupported architecture on Android ${arch}`)
+          throw new UnsupportedError(`Unsupported architecture on Android ${arch}`)
       }
       break
     case 'win32':
@@ -83,7 +91,7 @@ async function getNativeBinding(nodeDir) {
         case 'ia32': nodeName = 'jieba.win32-ia32-msvc'; break
         case 'arm64': nodeName = 'jieba.win32-arm64-msvc'; break
         default:
-          throw new Error(`Unsupported architecture on Windows: ${arch}`)
+          throw new UnsupportedError(`Unsupported architecture on Windows: ${arch}`)
       }
       break
     case 'darwin':
@@ -91,12 +99,12 @@ async function getNativeBinding(nodeDir) {
         case 'x64': nodeName = 'jieba.darwin-x64'; break
         case 'arm64': nodeName = 'jieba.darwin-arm64';break
         default:
-          throw new Error(`Unsupported architecture on macOS: ${arch}`)
+          throw new UnsupportedError(`Unsupported architecture on macOS: ${arch}`)
       }
       break
     case 'freebsd':
       if (arch !== 'x64') {
-        throw new Error(`Unsupported architecture on FreeBSD: ${arch}`)
+        throw new UnsupportedError(`Unsupported architecture on FreeBSD: ${arch}`)
       }
       nodeName = 'jieba.freebsd-x64'
       break
@@ -120,11 +128,11 @@ async function getNativeBinding(nodeDir) {
           nodeName = 'jieba.linux-arm-gnueabihf'
           break
         default:
-          throw new Error(`Unsupported architecture on Linux: ${arch}`)
+          throw new UnsupportedError(`Unsupported architecture on Linux: ${arch}`)
       }
       break
     default:
-      throw new Error(`Unsupported OS: ${platform}, architecture: ${arch}`)
+      throw new UnsupportedError(`Unsupported OS: ${platform}, architecture: ${arch}`)
   }
   const nodeFile = nodeName + '.node'
   const nodePath = path.join(nodeDir, 'package', nodeFile)
@@ -133,28 +141,50 @@ async function getNativeBinding(nodeDir) {
     if (!localFileExisted) await handleFile(nodeDir, nodeName)
     nativeBinding = require(nodePath)
   } catch (e) {
-    console.error(e)
+    logger.error('在处理二进制文件时遇到了错误', e)
+    if (e instanceof DownloadError) {
+      throw e
+    }
     throw new Error(`Failed to use ${nodePath} on ${platform}-${arch}`)
   }
   return nativeBinding
 }
 
 async function handleFile(nodeDir: string, nodeName: string) {
-  const response = await fetch(`https://registry.npmjs.org/@node-rs/${nodeName.replace('.', '-')}/latest`);
-  const data = await response.json();
+  const url = `https://registry.npmjs.org/@node-rs/${nodeName.replace('.', '-')}/latest`;
+  let data
+  try {
+    const response = await fetch(url);
+    data = await response.json();
+  } catch (e) {
+    logger.error(`Failed to fetch from URL: ${url}`, e);
+    throw new DownloadError(`Failed to fetch from URL: ${e.message}`);
+  }
   const tarballUrl = data.dist.tarball;
-  if (!tarballUrl) throw new Error('Failed to get File url');
+  if (!tarballUrl) throw new DownloadError('Failed to get File url');
+
   const downloader = new Downloader({
     url: tarballUrl,
     directory: nodeDir,
-    fileName: "target.tgz"
+    onProgress: function (percentage, chunk, remainingSize) {
+      //Gets called with each chunk.
+      logger.info("% ", percentage);
+      logger.info("Current chunk of data: ", chunk);
+      logger.info("Remaining bytes: ", remainingSize);
+    },
   });
-  console.log('开始下载二进制文件');
-  const report = await downloader.download();
-  if (report.downloadStatus === "COMPLETE") {
-    await extract(path.resolve(report.filePath));
-  } else {
-    throw new Error('下载被放弃');
+  logger.info('开始下载二进制文件');
+  try {
+    const {filePath, downloadStatus} = await downloader.download();
+    if (downloadStatus === "COMPLETE") {
+      await extract(path.resolve(filePath));
+      logger.success(`File downloaded successfully at ${filePath}`)
+    } else {
+      throw new DownloadError('Download was aborted')
+    }
+  } catch (e) {
+    logger.error("Failed to download the file", e)
+    throw new DownloadError(`Failed to download the binary file: ${e.message}`)
   }
 }
 
@@ -185,3 +215,16 @@ export namespace Jieba {
 
 Context.service('jieba', Jieba)
 export default Jieba
+
+class DownloadError extends Error {
+  constructor(message) {
+    super(message);
+    this.name = "DownloadError";
+  }
+}
+class UnsupportedError extends Error {
+  constructor(message) {
+    super(message);
+    this.name = "UnsupportedError";
+  }
+}
