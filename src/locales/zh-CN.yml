@@ -1,0 +1,9 @@
+commands:
+  jieba:
+    description: 通过 jieba 分词
+    usage: |-
+      jieba 我们中出了一个叛徒 => 我们, 中, 出, 了, 一个, 叛徒
+      GitHub: ahdg6/koishi-plugin-jieba
+    options:
+      action: 'id 接收数字，0 (cut) 默认, 1 (cutAll) 对应 -c, 2 (extract) 对应 -e'
+      number: extract 分的 topn

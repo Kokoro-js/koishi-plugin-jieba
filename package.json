@@ -1,7 +1,7 @@
 {
   "name": "koishi-plugin-jieba",
   "description": "Provide jieba environment with Koishi",
-  "version": "0.2.1",
+  "version": "0.2.2",
   "main": "lib/index.js",
   "typings": "lib/index.d.ts",
   "files": [
@@ -16,7 +16,6 @@
     "url": "https://github.com/ahdg6/koishi-plugin-jieba/issues"
   },
   "license": "AGPL-3.0-or-later",
-  "scripts": {},
   "keywords": [
     "jieba",
     "koishi",
@@ -26,6 +25,10 @@
     "koishi": "^4.13.6"
   },
   "dependencies": {
-    "nodejs-file-downloader": "^4.12.1"
+    "nodejs-file-downloader": "^4.12.1",
+    "tar": "^6.1.15"
+  },
+  "devDependencies": {
+    "prettier": "^3.0.0"
   }
 }
