@@ -7,3 +7,5 @@ commands:
     options:
       action: 'id 接收数字，0 (cut) 默认, 1 (cutAll) 对应 -c, 2 (extract) 对应 -e'
       number: extract 分的 topn
+    messages:
+      no-message: '你必须提供用于分词的内容'

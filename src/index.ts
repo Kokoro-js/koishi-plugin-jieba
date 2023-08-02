@@ -1,4 +1,4 @@
-import { Context, Logger, Schema, Service } from 'koishi';
+import { Context, h, Logger, Schema, Service } from 'koishi';
 import path from 'path';
 import { mkdir } from 'fs/promises';
 import fs from 'fs';
@@ -44,12 +44,13 @@ export class Jieba extends Service implements JiebaApi {
 
     ctx.i18n.define('zh', require('./locales/zh-CN'));
     ctx
-      .command('jieba [message:string]')
+      .command('jieba <message:string>')
       .option('action', '-a <id:posint>', { fallback: 0 })
       .option('action', '-c', { value: 1 })
       .option('action', '-e', { value: 2 })
       .option('number', '-n <num:posint>', { fallback: 3 })
-      .action(({ options }, message) => {
+      .action(({ options, session }, message) => {
+        if (!message) return session.text('.no-message');
         switch (options.action) {
           case 0:
             message = ctx.jieba.cut(message).join(', ');
@@ -63,7 +64,7 @@ export class Jieba extends Service implements JiebaApi {
               .map((word) => word.keyword + ': ' + word.weight)
               .join('\n');
         }
-        return message;
+        return h('quote', { id: session.messageId }) + message;
       });
   }
 
