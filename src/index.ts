@@ -129,90 +129,43 @@ async function getNativeBinding(nodeDir) {
   const { platform, arch } = process;
   let nativeBinding;
   let nodeName;
-  switch (platform) {
-    case 'android':
-      switch (arch) {
-        case 'arm64':
-          nodeName = 'jieba.android-arm64';
-          break;
-        case 'arm':
-          nodeName = 'jieba.android-arm-eabi';
-          break;
-        default:
-          throw new UnsupportedError(
-            `Unsupported architecture on Android ${arch}`,
-          );
-      }
-      break;
-    case 'win32':
-      switch (arch) {
-        case 'x64':
-          nodeName = 'jieba.win32-x64-msvc';
-          break;
-        case 'ia32':
-          nodeName = 'jieba.win32-ia32-msvc';
-          break;
-        case 'arm64':
-          nodeName = 'jieba.win32-arm64-msvc';
-          break;
-        default:
-          throw new UnsupportedError(
-            `Unsupported architecture on Windows: ${arch}`,
-          );
-      }
-      break;
-    case 'darwin':
-      switch (arch) {
-        case 'x64':
-          nodeName = 'jieba.darwin-x64';
-          break;
-        case 'arm64':
-          nodeName = 'jieba.darwin-arm64';
-          break;
-        default:
-          throw new UnsupportedError(
-            `Unsupported architecture on macOS: ${arch}`,
-          );
-      }
-      break;
-    case 'freebsd':
-      if (arch !== 'x64') {
-        throw new UnsupportedError(
-          `Unsupported architecture on FreeBSD: ${arch}`,
-        );
-      }
-      nodeName = 'jieba.freebsd-x64';
-      break;
-    case 'linux':
-      switch (arch) {
-        case 'x64':
-          if (isMusl()) {
-            nodeName = 'jieba.linux-x64-musl';
-          } else {
-            nodeName = 'jieba.linux-x64-gnu';
-          }
-          break;
-        case 'arm64':
-          if (isMusl()) {
-            nodeName = 'jieba.linux-arm64-musl';
-          } else {
-            nodeName = 'jieba.linux-arm64-gnu';
-          }
-          break;
-        case 'arm':
-          nodeName = 'jieba.linux-arm-gnueabihf';
-          break;
-        default:
-          throw new UnsupportedError(
-            `Unsupported architecture on Linux: ${arch}`,
-          );
-      }
-      break;
-    default:
-      throw new UnsupportedError(
-        `Unsupported OS: ${platform}, architecture: ${arch}`,
-      );
+
+  const platformArchMap = {
+    android: {
+      arm64: 'jieba.android-arm64',
+      arm: 'jieba.android-arm-eabi',
+    },
+    win32: {
+      x64: 'jieba.win32-x64-msvc',
+      ia32: 'jieba.win32-ia32-msvc',
+      arm64: 'jieba.win32-arm64-msvc',
+    },
+    darwin: {
+      x64: 'jieba.darwin-x64',
+      arm64: 'jieba.darwin-arm64',
+    },
+    freebsd: {
+      x64: 'jieba.freebsd-x64',
+    },
+    linux: {
+      x64: isMusl() ? 'jieba.linux-x64-musl' : 'jieba.linux-x64-gnu',
+      arm64: isMusl() ? 'jieba.linux-arm64-musl' : 'jieba.linux-arm64-gnu',
+      arm: 'jieba.linux-arm-gnueabihf',
+    },
+  };
+  if (!platformArchMap[platform]) {
+    throw new UnsupportedError(
+      `Unsupported OS: ${platform}, architecture: ${arch}`,
+    );
   }
+  if (!platformArchMap[platform][arch]) {
+    throw new UnsupportedError(
+      `Unsupported architecture on ${platform}: ${arch}`,
+    );
+  }
+
+  nodeName = platformArchMap[platform][arch];
+
   const nodeFile = nodeName + '.node';
   const nodePath = path.join(nodeDir, 'package', nodeFile);
   const localFileExisted = fs.existsSync(nodePath);
