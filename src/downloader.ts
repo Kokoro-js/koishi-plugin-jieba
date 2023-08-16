@@ -4,7 +4,7 @@ import tar from 'tar';
 import zlib from 'zlib';
 import fs from 'fs';
 import path from 'path';
-import { Logger } from 'koishi';
+import { Logger, Quester } from 'koishi';
 
 export class DownloadError extends Error {
   constructor(message: string) {
@@ -17,21 +17,26 @@ export async function handleFile(
   nodeDir: string,
   nodeName: string,
   logger: Logger,
+  http: Quester,
 ) {
   const url = `https://registry.npmjs.org/@node-rs/${nodeName.replace(
     '.',
     '-',
   )}/latest`;
-  let data;
+
+  let tarballUrl: string | undefined;
+
   try {
-    const response = await fetch(url);
-    data = await response.json();
+    const res = await http.get(url);
+    tarballUrl = res.data.dist.tarball;
+    logger.info(`Stating download from ${tarballUrl}`);
   } catch (e) {
     logger.error(`Failed to fetch from URL: ${url}`, e);
     throw new DownloadError(`Failed to fetch from URL: ${e.message}`);
   }
-  const tarballUrl = data.dist.tarball;
-  if (!tarballUrl) throw new DownloadError('Failed to get File url');
+
+  if (!tarballUrl)
+    throw new DownloadError(`Failed to get the binary url from ${url}`);
 
   const downloader = new Downloader({
     url: tarballUrl,
@@ -43,7 +48,6 @@ export async function handleFile(
       );
     },
   });
-  logger.info('Start downloading the binaries');
   try {
     const { filePath, downloadStatus } = await downloader.download();
     if (downloadStatus === 'COMPLETE') {

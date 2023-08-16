@@ -40,7 +40,7 @@ export class Jieba extends Service implements JiebaApi {
     ctx: Context,
     public config: Jieba.Config,
   ) {
-    super(ctx, 'jieba');
+    super(ctx, 'jieba', true);
 
     ctx.i18n.define('zh', require('./locales/zh-CN'));
     ctx
@@ -170,7 +170,8 @@ async function getNativeBinding(nodeDir) {
   const nodePath = path.join(nodeDir, 'package', nodeFile);
   const localFileExisted = fs.existsSync(nodePath);
   try {
-    if (!localFileExisted) await handleFile(nodeDir, nodeName, logger);
+    if (!localFileExisted)
+      await handleFile(nodeDir, nodeName, logger, this.ctx.http);
     nativeBinding = require(nodePath);
   } catch (e) {
     logger.error('在处理二进制文件时遇到了错误', e);
