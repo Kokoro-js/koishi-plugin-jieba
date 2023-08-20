@@ -28,7 +28,7 @@ export async function handleFile(
 
   try {
     const res = await http.get(url);
-    tarballUrl = res.data.dist.tarball;
+    tarballUrl = res.dist.tarball;
     logger.info(`Stating download from ${tarballUrl}`);
   } catch (e) {
     logger.error(`Failed to fetch from URL: ${url}`, e);
