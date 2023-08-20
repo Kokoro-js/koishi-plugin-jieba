@@ -74,7 +74,7 @@ export class Jieba extends Service implements JiebaApi {
     await mkdir(nodeDir, { recursive: true });
     let nativeBinding = null;
     try {
-      nativeBinding = await getNativeBinding(nodeDir);
+      nativeBinding = await this.getNativeBinding(nodeDir);
     } catch (e) {
       if (e instanceof UnsupportedError) {
         logger.error('Jieba 目前不支持你的系统');
@@ -102,6 +102,64 @@ export class Jieba extends Service implements JiebaApi {
     }
     logger.success('Jieba 服务启动成功');
   }
+
+  private async getNativeBinding(nodeDir) {
+    const { platform, arch } = process;
+    let nativeBinding;
+    let nodeName;
+
+    const platformArchMap = {
+      android: {
+        arm64: 'jieba.android-arm64',
+        arm: 'jieba.android-arm-eabi',
+      },
+      win32: {
+        x64: 'jieba.win32-x64-msvc',
+        ia32: 'jieba.win32-ia32-msvc',
+        arm64: 'jieba.win32-arm64-msvc',
+      },
+      darwin: {
+        x64: 'jieba.darwin-x64',
+        arm64: 'jieba.darwin-arm64',
+      },
+      freebsd: {
+        x64: 'jieba.freebsd-x64',
+      },
+      linux: {
+        x64: isMusl() ? 'jieba.linux-x64-musl' : 'jieba.linux-x64-gnu',
+        arm64: isMusl() ? 'jieba.linux-arm64-musl' : 'jieba.linux-arm64-gnu',
+        arm: 'jieba.linux-arm-gnueabihf',
+      },
+    };
+    if (!platformArchMap[platform]) {
+      throw new UnsupportedError(
+        `Unsupported OS: ${platform}, architecture: ${arch}`,
+      );
+    }
+    if (!platformArchMap[platform][arch]) {
+      throw new UnsupportedError(
+        `Unsupported architecture on ${platform}: ${arch}`,
+      );
+    }
+
+    nodeName = platformArchMap[platform][arch];
+
+    const nodeFile = nodeName + '.node';
+    const nodePath = path.join(nodeDir, 'package', nodeFile);
+    const localFileExisted = fs.existsSync(nodePath);
+    try {
+      if (!localFileExisted)
+        await handleFile(nodeDir, nodeName, logger, this.ctx.http);
+      nativeBinding = require(nodePath);
+    } catch (e) {
+      logger.error('在处理二进制文件时遇到了错误', e);
+      if (e instanceof DownloadError) {
+        throw e;
+      }
+      throw new Error(`Failed to use ${nodePath} on ${platform}-${arch}`);
+    }
+    return nativeBinding;
+  }
 }
 
 function isMusl() {
@@ -123,64 +181,6 @@ function isMusl() {
     const glibcVersionRuntime = report.header?.glibcVersionRuntime;
     return !glibcVersionRuntime;
   }
-}
-
-async function getNativeBinding(nodeDir) {
-  const { platform, arch } = process;
-  let nativeBinding;
-  let nodeName;
-
-  const platformArchMap = {
-    android: {
-      arm64: 'jieba.android-arm64',
-      arm: 'jieba.android-arm-eabi',
-    },
-    win32: {
-      x64: 'jieba.win32-x64-msvc',
-      ia32: 'jieba.win32-ia32-msvc',
-      arm64: 'jieba.win32-arm64-msvc',
-    },
-    darwin: {
-      x64: 'jieba.darwin-x64',
-      arm64: 'jieba.darwin-arm64',
-    },
-    freebsd: {
-      x64: 'jieba.freebsd-x64',
-    },
-    linux: {
-      x64: isMusl() ? 'jieba.linux-x64-musl' : 'jieba.linux-x64-gnu',
-      arm64: isMusl() ? 'jieba.linux-arm64-musl' : 'jieba.linux-arm64-gnu',
-      arm: 'jieba.linux-arm-gnueabihf',
-    },
-  };
-  if (!platformArchMap[platform]) {
-    throw new UnsupportedError(
-      `Unsupported OS: ${platform}, architecture: ${arch}`,
-    );
-  }
-  if (!platformArchMap[platform][arch]) {
-    throw new UnsupportedError(
-      `Unsupported architecture on ${platform}: ${arch}`,
-    );
-  }
-
-  nodeName = platformArchMap[platform][arch];
-
-  const nodeFile = nodeName + '.node';
-  const nodePath = path.join(nodeDir, 'package', nodeFile);
-  const localFileExisted = fs.existsSync(nodePath);
-  try {
-    if (!localFileExisted)
-      await handleFile(nodeDir, nodeName, logger, this.ctx.http);
-    nativeBinding = require(nodePath);
-  } catch (e) {
-    logger.error('在处理二进制文件时遇到了错误', e);
-    if (e instanceof DownloadError) {
-      throw e;
-    }
-    throw new Error(`Failed to use ${nodePath} on ${platform}-${arch}`);
-  }
-  return nativeBinding;
 }
 
 export namespace Jieba {
