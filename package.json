@@ -1,7 +1,7 @@
 {
   "name": "koishi-plugin-jieba",
   "description": "Provide jieba environment with Koishi",
-  "version": "0.3.0",
+  "version": "0.3.4",
   "main": "lib/index.js",
   "typings": "lib/index.d.ts",
   "files": [
@@ -29,6 +29,6 @@
     "tar": "^6.1.15"
   },
   "devDependencies": {
-    "prettier": "^3.0.0"
+    "prettier": "^3.0.2"
   }
 }
