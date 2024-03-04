@@ -22,13 +22,13 @@
     "plugin"
   ],
   "peerDependencies": {
-    "koishi": "^4.13.6"
+    "koishi": "^4.17.0"
   },
   "dependencies": {
     "nodejs-file-downloader": "^4.12.1",
-    "tar": "^6.1.15"
+    "tar": "^6.2.0"
   },
   "devDependencies": {
-    "prettier": "^3.0.2"
+    "prettier": "^3.2.5"
   }
 }
