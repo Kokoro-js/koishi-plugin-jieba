@@ -1,4 +1,4 @@
-import { Context, h, Logger, Schema, Service } from 'koishi';
+import {Context, h, Logger, Schema, Service} from 'koishi';
 import path from 'path';
 import { mkdir } from 'fs/promises';
 import fs from 'fs';
@@ -6,7 +6,6 @@ import { handleFile, DownloadError } from './downloader';
 import type { JiebaApi, Keyword, TaggedWord } from './type';
 
 export const name = 'jieba';
-const logger = new Logger(name);
 
 declare module 'koishi' {
   interface Context {
@@ -36,8 +35,9 @@ export class Jieba extends Service implements JiebaApi {
     allowedPos?: string | undefined | null,
   ) => Array<Keyword>;
   loadTFIDFDict: (dict: Buffer) => void;
+
   constructor(
-    ctx: Context,
+    public ctx: Context,
     public config: Jieba.Config,
   ) {
     super(ctx, 'jieba', true);
@@ -68,6 +68,11 @@ export class Jieba extends Service implements JiebaApi {
       });
   }
 
+  // @ts-ignore
+  get logger(): Logger {
+    return this.ctx.logger(name)
+  }
+
   async start() {
     let { nodeBinaryPath } = this.config;
     const nodeDir = path.resolve(this.ctx.baseDir, nodeBinaryPath);
@@ -77,10 +82,10 @@ export class Jieba extends Service implements JiebaApi {
       nativeBinding = await this.getNativeBinding(nodeDir);
     } catch (e) {
       if (e instanceof UnsupportedError) {
-        logger.error('Jieba 目前不支持你的系统');
+        this.logger.error('Jieba 目前不支持你的系统');
       }
       if (e instanceof DownloadError) {
-        logger.error('下载二进制文件遇到错误，请查看日志获取更详细信息');
+        this.logger.error('下载二进制文件遇到错误，请查看日志获取更详细信息');
       }
       throw e;
     }
@@ -100,7 +105,7 @@ export class Jieba extends Service implements JiebaApi {
         throw e;
       }
     }
-    logger.success('Jieba 服务启动成功');
+    this.logger.success('Jieba 服务启动成功');
   }
 
   private async getNativeBinding(nodeDir) {
@@ -149,10 +154,10 @@ export class Jieba extends Service implements JiebaApi {
     const localFileExisted = fs.existsSync(nodePath);
     try {
       if (!localFileExisted)
-        await handleFile(nodeDir, nodeName, logger, this.ctx.http);
+        await handleFile(nodeDir, nodeName, this.logger, this.ctx.http);
       nativeBinding = require(nodePath);
     } catch (e) {
-      logger.error('在处理二进制文件时遇到了错误', e);
+      this.logger.error('在处理二进制文件时遇到了错误', e);
       if (e instanceof DownloadError) {
         throw e;
       }
