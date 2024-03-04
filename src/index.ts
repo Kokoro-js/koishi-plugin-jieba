@@ -197,7 +197,6 @@ export namespace Jieba {
   });
 }
 
-Context.service('jieba', Jieba);
 export default Jieba;
 class UnsupportedError extends Error {
   constructor(message: string) {
