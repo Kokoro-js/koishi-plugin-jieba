@@ -53,13 +53,13 @@ export class Jieba extends Service implements JiebaApi {
         if (!message) return session.text('.no-message');
         switch (options.action) {
           case 0:
-            message = ctx.jieba.cut(message).join(', ');
+            message = this.cut(message).join(', ');
             break;
           case 1:
-            message = ctx.jieba.cutAll(message).join(', ');
+            message = this.cutAll(message).join(', ');
             break;
           case 2:
-            const keywords = ctx.jieba.extract(message, options.number);
+            const keywords = this.extract(message, options.number);
             message = keywords
               .map((word) => word.keyword + ': ' + word.weight)
               .join('\n');
