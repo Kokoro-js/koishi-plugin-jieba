@@ -1,9 +1,9 @@
-import {Context, h, Logger, Schema, Service} from 'koishi';
-import path from 'path';
+import { Context, h, Logger, Schema, Service } from 'koishi';
+import path, { join } from 'path';
 import { mkdir } from 'fs/promises';
 import fs from 'fs';
 import { handleFile, DownloadError } from './downloader';
-import type { JiebaApi, Keyword, TaggedWord } from './type';
+import { Jieba as NativeJieba, Keyword, TaggedWord, TfIdf as NativeTfIdf } from './type'; // 假设 native-binding.ts 导出了最新的类型
 
 export const name = 'jieba';
 
@@ -13,107 +13,75 @@ declare module 'koishi' {
   }
 }
 
-export class Jieba extends Service implements JiebaApi {
-  // nativeBinding
-  loadDict: (dict: Buffer) => void;
-  cut: (
-    sentence: string | Buffer,
-    hmm?: boolean | undefined | null,
-  ) => string[];
-  cutAll: (sentence: string | Buffer) => string[];
-  cutForSearch: (
-    sentence: string | Buffer,
-    hmm?: boolean | undefined | null,
-  ) => string[];
-  tag: (
-    sentence: string | Buffer,
-    hmm?: boolean | undefined | null,
-  ) => Array<TaggedWord>;
-  extract: (
-    sentence: string | Buffer,
-    topn: number,
-    allowedPos?: string | undefined | null,
-  ) => Array<Keyword>;
-  loadTFIDFDict: (dict: Buffer) => void;
+export class Jieba extends Service {
+  public jieba: NativeJieba;
+  public tfidf: NativeTfIdf;
 
-  constructor(
-    public ctx: Context,
-    public config: Jieba.Config,
-  ) {
+  constructor(public ctx: Context, public config: Jieba.Config) {
     super(ctx, 'jieba', true);
 
     ctx.i18n.define('zh', require('./locales/zh-CN'));
-    ctx
-      .command('jieba <message:string>')
+
+    ctx.command('jieba <message:string>')
       .option('action', '-a <id:posint>', { fallback: 0 })
       .option('action', '-c', { value: 1 })
       .option('action', '-e', { value: 2 })
       .option('number', '-n <num:posint>', { fallback: 3 })
       .action(({ options, session }, message) => {
         if (!message) return session.text('.no-message');
+        let result = '';
         switch (options.action) {
           case 0:
-            message = this.cut(message).join(', ');
+            result = this.cut(message).join(', ');
             break;
           case 1:
-            message = this.cutAll(message).join(', ');
+            result = this.cutAll(message).join(', ');
             break;
           case 2:
-            const keywords = this.extract(message, options.number);
-            message = keywords
-              .map((word) => word.keyword + ': ' + word.weight)
-              .join('\n');
+            const keywords = this.extract(message, options.number, null);
+            result = keywords.map(word => `${word.keyword}: ${word.weight}`).join('\n');
+            break;
+          default:
+            return session.text('.invalid-action');
         }
-        return h('quote', { id: session.messageId }) + message;
+        return h('quote', { id: session.messageId }) + result;
       });
   }
-
   // @ts-ignore
   get logger(): Logger {
-    return this.ctx.logger(name)
+    return this.ctx.logger(name);
   }
 
   async start() {
-    let { nodeBinaryPath } = this.config;
-    const nodeDir = path.resolve(this.ctx.baseDir, nodeBinaryPath);
+    const nodeDir = path.resolve(this.ctx.baseDir, this.config.nodeBinaryDir);
     await mkdir(nodeDir, { recursive: true });
-    let nativeBinding = null;
+    let nativeBinding;
+
     try {
       nativeBinding = await this.getNativeBinding(nodeDir);
     } catch (e) {
       if (e instanceof UnsupportedError) {
-        this.logger.error('Jieba 目前不支持你的系统');
-      }
-      if (e instanceof DownloadError) {
-        this.logger.error('下载二进制文件遇到错误，请查看日志获取更详细信息');
+        this.logger.error('当前系统不支持 Jieba 服务');
+      } else if (e instanceof DownloadError) {
+        this.logger.error('下载二进制文件时出错，请检查日志获取更多信息');
+      } else {
+        this.logger.error('加载 Jieba 原生绑定时出错', e);
       }
       throw e;
     }
-    ({
-      loadDict: this.loadDict,
-      cut: this.cut,
-      cutAll: this.cutAll,
-      cutForSearch: this.cutForSearch,
-      tag: this.tag,
-      extract: this.extract,
-      loadTFIDFDict: this.loadTFIDFDict,
-    } = nativeBinding);
-    try {
-      nativeBinding.load();
-    } catch (e) {
-      if (e.message != 'Jieba was loaded, could not load again') {
-        throw e;
-      }
-    }
+
+    const { Jieba: JiebaClass, TfIdf: TfIdfClass } = nativeBinding;
+    // 使用默认字典初始化 Jieba 实例
+    this.jieba = JiebaClass.withDict(fs.readFileSync(join(__dirname, 'dict.txt')));
+    // 初始化 TfIdf 实例
+    this.tfidf = TfIdfClass.withDict(fs.readFileSync(join(__dirname, 'idf.txt')));
+
     this.logger.success('Jieba 服务启动成功');
   }
 
-  private async getNativeBinding(nodeDir) {
+  private async getNativeBinding(nodeDir: string) {
     const { platform, arch } = process;
-    let nativeBinding;
-    let nodeName;
-
-    const platformArchMap = {
+    const platformArchMap: Record<string, Record<string, string>> = {
       android: {
         arm64: 'jieba.android-arm64',
         arm: 'jieba.android-arm-eabi',
@@ -134,66 +102,83 @@ export class Jieba extends Service implements JiebaApi {
         x64: isMusl() ? 'jieba.linux-x64-musl' : 'jieba.linux-x64-gnu',
         arm64: isMusl() ? 'jieba.linux-arm64-musl' : 'jieba.linux-arm64-gnu',
         arm: 'jieba.linux-arm-gnueabihf',
+        riscv64: isMusl() ? 'jieba.linux-riscv64-musl' : 'jieba.linux-riscv64-gnu',
+        ppc64: 'jieba.linux-ppc64-gnu',
+        s390x: 'jieba.linux-s390x-gnu',
       },
     };
-    if (!platformArchMap[platform]) {
-      throw new UnsupportedError(
-        `Unsupported OS: ${platform}, architecture: ${arch}`,
-      );
-    }
-    if (!platformArchMap[platform][arch]) {
-      throw new UnsupportedError(
-        `Unsupported architecture on ${platform}: ${arch}`,
-      );
+
+    if (!platformArchMap[platform] || !platformArchMap[platform][arch]) {
+      throw new UnsupportedError(`不支持的操作系统或架构: ${platform}-${arch}`);
     }
 
-    nodeName = platformArchMap[platform][arch];
-
-    const nodeFile = nodeName + '.node';
+    const nodeName = platformArchMap[platform][arch];
+    const nodeFile = `${nodeName}.node`;
     const nodePath = path.join(nodeDir, 'package', nodeFile);
-    const localFileExisted = fs.existsSync(nodePath);
-    try {
-      if (!localFileExisted)
-        await handleFile(nodeDir, nodeName, this.logger, this.ctx.http);
-      nativeBinding = require(nodePath);
-    } catch (e) {
-      this.logger.error('在处理二进制文件时遇到了错误', e);
-      if (e instanceof DownloadError) {
-        throw e;
-      }
-      throw new Error(`Failed to use ${nodePath} on ${platform}-${arch}`);
+
+    if (!fs.existsSync(nodePath)) {
+      await handleFile(nodeDir, nodeName, this.logger, this.ctx.http);
     }
-    return nativeBinding;
+
+    try {
+      return require(nodePath);
+    } catch (e) {
+      this.logger.error(`加载原生绑定文件失败: ${nodePath}`, e);
+      throw new Error(`无法使用 ${nodePath} 在 ${platform}-${arch} 上`);
+    }
+  }
+
+  // 兼容旧 API 的方法转发
+  loadDict(dict: Uint8Array): void {
+    this.jieba.loadDict(dict);
+  }
+
+  cut(sentence: string | Buffer, hmm?: boolean | undefined | null): string[] {
+    return this.jieba.cut(sentence, hmm);
+  }
+
+  cutAll(sentence: string | Buffer): string[] {
+    return this.jieba.cutAll(sentence);
+  }
+
+  cutForSearch(sentence: string | Buffer, hmm?: boolean | undefined | null): string[] {
+    return this.jieba.cutForSearch(sentence, hmm);
+  }
+
+  tag(sentence: string | Buffer, hmm?: boolean | undefined | null): Array<TaggedWord> {
+    return this.jieba.tag(sentence, hmm);
+  }
+
+  // 新的 API 方法
+  extract(sentence: string, topK: number, allowedPos?: Array<string> | null): Array<Keyword> {
+    return this.tfidf.extractKeywords(this.jieba, sentence, topK, allowedPos);
+  }
+
+  loadTFIDFDict(dict: Uint8Array): void {
+    this.tfidf.loadDict(dict);
   }
 }
 
-function isMusl() {
-  // For Node 10
+function isMusl(): boolean {
   if (!process.report || typeof process.report.getReport !== 'function') {
     try {
-      const lddPath = require('child_process')
-        .execSync('which ldd')
-        .toString()
-        .trim();
+      const lddPath = require('child_process').execSync('which ldd').toString().trim();
       return fs.readFileSync(lddPath, 'utf8').includes('musl');
-    } catch (e) {
+    } catch {
       return true;
     }
   } else {
-    const report: { header: any } = process.report.getReport() as unknown as {
-      header: any;
-    };
-    const glibcVersionRuntime = report.header?.glibcVersionRuntime;
-    return !glibcVersionRuntime;
+    const report: { header: any } = process.report.getReport() as any;
+    return !report.header?.glibcVersionRuntime;
   }
 }
 
 export namespace Jieba {
   export interface Config {
-    nodeBinaryPath: string;
+    nodeBinaryDir: string;
   }
   export const Config = Schema.object({
-    nodeBinaryPath: Schema.path({
+    nodeBinaryDir: Schema.path({
       filters: ['directory'],
       allowCreate: true,
     })
